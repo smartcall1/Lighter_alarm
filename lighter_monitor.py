@@ -167,12 +167,15 @@ def format_message(account: dict, positions: list[dict]) -> str:
 
     pool_details = account.get("_pool_details", [])
     if pool_details:
-        total_lp = sum(p["principal"] for p in pool_details)
-        lines.append(f"🏦 LP ${total_lp:,.0f}")
+        total_equity = sum(p["equity"] for p in pool_details)
+        total_lp_pnl = sum(p["lp_pnl"] for p in pool_details)
+        lp_e = "🟢" if total_lp_pnl >= 0 else "🔴"
+        lines.append(f"🏦 LP ${total_equity:,.0f} ({lp_e}${total_lp_pnl:+,.0f})")
         for pd in pool_details:
             apy_str = f" {pd['apy']:+.1f}%" if pd["apy"] is not None else ""
+            pnl_str = f" ({pd['lp_pnl']:+,.0f})" if pd["lp_pnl"] != 0 else ""
             name = pd["name"].replace("Lighter Liquidity Provider (LLP)", "LLP").replace("Edge & Hedge (L/S Factors)", "Edge&Hedge")
-            lines.append(f"  {name} ${pd['principal']:,.0f}{apy_str}")
+            lines.append(f"  {name} ${pd['equity']:,.0f}{pnl_str}{apy_str}")
 
     return "\n".join(lines)
 
@@ -209,11 +212,15 @@ async def check_and_notify():
             if principal == 0:
                 continue
             pool_idx = s.get("public_pool_index", 0)
+            my_shares = int(s.get("shares_amount", 0))
             meta = await fetch_pool_meta(client, pool_idx)
             name = (meta.get("name") or "$LIT Staking") if meta else "$LIT Staking"
             apy = float(meta["annual_percentage_yield"]) if meta and meta.get("annual_percentage_yield") else None
             tav = float(meta["total_asset_value"]) if meta and meta.get("total_asset_value") else 0
-            pool_details.append({"name": name, "principal": principal, "apy": apy, "tav": tav})
+            total_shares = int(meta.get("total_shares", 0)) if meta else 0
+            equity = (my_shares / total_shares) * tav if total_shares else principal
+            lp_pnl = equity - principal if principal else 0
+            pool_details.append({"name": name, "principal": principal, "equity": equity, "lp_pnl": lp_pnl, "apy": apy})
         account["_pool_details"] = sorted(pool_details, key=lambda x: x["principal"], reverse=True)
 
         positions = parse_positions(account)
