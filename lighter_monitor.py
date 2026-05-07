@@ -61,6 +61,24 @@ async def fetch_account(client: httpx.AsyncClient) -> dict | None:
         return None
 
 
+async def fetch_pool_meta(client: httpx.AsyncClient, pool_index: int) -> dict | None:
+    try:
+        r = await client.get(
+            f"{API_BASE}/publicPoolsMetadata",
+            params={"index": pool_index + 1, "limit": 1},
+            headers=HEADERS,
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return None
+        pools = r.json().get("public_pools", [])
+        if pools and pools[0].get("account_index") == pool_index:
+            return pools[0]
+    except Exception:
+        pass
+    return None
+
+
 def parse_positions(account: dict) -> list[dict]:
     results = []
     for p in account.get("positions", []):
@@ -148,11 +166,15 @@ def format_message(account: dict, positions: list[dict]) -> str:
     lines.append(f"💰 마진 ${total_margin:,.0f} / 가용 ${balance:,.0f}")
     lines.append(f"📊 총 자산 ${total_value:,.0f}")
 
-    shares = account.get("shares", [])
-    if shares:
-        total_principal = sum(float(s.get("principal_amount", "0")) for s in shares)
-        if total_principal > 0:
-            lines.append(f"🏦 LP ${total_principal:,.0f} ({len(shares)}풀)")
+    pool_details = account.get("_pool_details", [])
+    if pool_details:
+        lines.append("")
+        total_lp = sum(p["principal"] for p in pool_details)
+        lines.append(f"🏦 LP ${total_lp:,.0f} ({len(pool_details)}풀)")
+        for pd in pool_details:
+            apy_str = f" APY {pd['apy']:+.1f}%" if pd["apy"] is not None else ""
+            tav_str = f" 풀${pd['tav']:,.0f}" if pd["tav"] else ""
+            lines.append(f"  · {pd['name']} ${pd['principal']:,.0f}{apy_str}{tav_str}")
 
     return "\n".join(lines)
 
@@ -182,9 +204,23 @@ async def check_and_notify():
         account = await fetch_account(client)
         if not account:
             return
+
+        pool_details = []
+        for s in account.get("shares", []):
+            principal = float(s.get("principal_amount", "0"))
+            if principal == 0:
+                continue
+            pool_idx = s.get("public_pool_index", 0)
+            meta = await fetch_pool_meta(client, pool_idx)
+            name = (meta.get("name") or "Unknown Pool") if meta else f"Pool #{pool_idx & 0xFFFF}"
+            apy = float(meta["annual_percentage_yield"]) if meta and meta.get("annual_percentage_yield") else None
+            tav = float(meta["total_asset_value"]) if meta and meta.get("total_asset_value") else 0
+            pool_details.append({"name": name, "principal": principal, "apy": apy, "tav": tav})
+        account["_pool_details"] = sorted(pool_details, key=lambda x: x["principal"], reverse=True)
+
         positions = parse_positions(account)
         msg = format_message(account, positions)
-        log.info("포지션 %d개 → 텔레그램 전송", len(positions))
+        log.info("포지션 %d개, LP %d풀 → 텔레그램 전송", len(positions), len(pool_details))
         await send_telegram(msg)
 
 
