@@ -15,10 +15,7 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-WALLET_ADDRESS = os.getenv(
-    "LIGHTER_WALLET",
-    "0x0FBeABcaFCf817d47E10a7bCFC15ba194dbD4EEF",
-)
+WALLET_ADDRESS = os.getenv("LIGHTER_WALLET", "0x0FBeABcaFCf817d47E10a7bCFC15ba194dbD4EEF")
 
 API_BASE = "https://mainnet.zklighter.elliot.ai/api/v1"
 HEADERS = {
