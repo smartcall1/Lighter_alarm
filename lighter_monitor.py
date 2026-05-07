@@ -133,7 +133,7 @@ def format_message(account: dict, positions: list[dict]) -> str:
             d = "📈" if p["side"] == "Long" else "📉"
             lines.append("")
             lines.append(f"{d} {p['name']} {p['side']} ×{p['leverage']}")
-            lines.append(f"  수량 {p['size']}주")
+            lines.append(f"  수량 {p['size']}주 ({fmt_price(p['value'])})")
             lines.append(
                 f"  {fmt_price(p['entry'])} → {fmt_price(p['current'])}"
             )
