@@ -20,7 +20,7 @@ async def test():
                 continue
             pool_idx = s.get("public_pool_index", 0)
             meta = await fetch_pool_meta(client, pool_idx)
-            name = (meta.get("name") or "Unknown Pool") if meta else f"Pool #{pool_idx & 0xFFFF}"
+            name = (meta.get("name") or "$LIT Staking") if meta else "$LIT Staking"
             apy = float(meta["annual_percentage_yield"]) if meta and meta.get("annual_percentage_yield") else None
             tav = float(meta["total_asset_value"]) if meta and meta.get("total_asset_value") else 0
             pool_details.append({"name": name, "principal": principal, "apy": apy, "tav": tav})
