@@ -130,6 +130,14 @@ def fmt_price(v: float) -> str:
     return f"${v:,.2f}"
 
 
+def fmt_big(v: float) -> str:
+    if abs(v) >= 1_000_000:
+        return f"${v / 1_000_000:,.1f}M"
+    if abs(v) >= 1_000:
+        return f"${v / 1_000:,.0f}K"
+    return f"${v:,.0f}"
+
+
 def format_message(account: dict, positions: list[dict]) -> str:
     now = datetime.now(AEST).strftime("%m/%d %H:%M")
     balance = float(account.get("available_balance", "0"))
@@ -145,36 +153,26 @@ def format_message(account: dict, positions: list[dict]) -> str:
     else:
         for p in positions:
             pnl_e = "🟢" if p["upnl"] >= 0 else "🔴"
-            d = "📈" if p["side"] == "Long" else "📉"
+            d = "L" if p["side"] == "Long" else "S"
+            order_tag = f" 📋{p['orders']}" if p["orders"] > 0 else ""
             lines.append("")
-            lines.append(f"{d} {p['name']} {p['side']} ×{p['leverage']}")
-            lines.append(f"  수량 {p['size']}주 ({fmt_price(p['value'])})")
-            lines.append(
-                f"  {fmt_price(p['entry'])} → {fmt_price(p['current'])}"
-            )
-            lines.append(
-                f"  {pnl_e} ${p['upnl']:+,.1f} ({p['pnl_pct']:+.1f}%)"
-            )
-            lines.append(f"  ⚠️ 청산 {fmt_price(p['liq'])} ({p['liq_dist']:+.0f}%)")
-            if p["orders"] > 0:
-                lines.append(f"  📋 주문 {p['orders']}건 대기")
+            lines.append(f"{'📈' if d == 'L' else '📉'} {p['name']} {d}{p['leverage']}x{order_tag}")
+            lines.append(f"{fmt_price(p['entry'])}→{fmt_price(p['current'])} | {p['size']}주 {fmt_price(p['value'])}")
+            lines.append(f"{pnl_e} {p['upnl']:+,.1f} ({p['pnl_pct']:+.1f}%) ⚠️{fmt_price(p['liq'])}")
 
     lines.append("")
-    lines.append("━" * 20)
     pnl_e = "🟢" if total_upnl >= 0 else "🔴"
-    lines.append(f"{pnl_e} 합계 PnL ${total_upnl:+,.1f}")
-    lines.append(f"💰 마진 ${total_margin:,.0f} / 가용 ${balance:,.0f}")
-    lines.append(f"📊 총 자산 ${total_value:,.0f}")
+    lines.append(f"{pnl_e} PnL ${total_upnl:+,.1f} | 마진 ${total_margin:,.0f}")
+    lines.append(f"💰 가용 ${balance:,.0f} | 총 ${total_value:,.0f}")
 
     pool_details = account.get("_pool_details", [])
     if pool_details:
-        lines.append("")
         total_lp = sum(p["principal"] for p in pool_details)
-        lines.append(f"🏦 LP ${total_lp:,.0f} ({len(pool_details)}풀)")
+        lines.append(f"🏦 LP ${total_lp:,.0f}")
         for pd in pool_details:
-            apy_str = f" APY {pd['apy']:+.1f}%" if pd["apy"] is not None else ""
-            tav_str = f" 풀${pd['tav']:,.0f}" if pd["tav"] else ""
-            lines.append(f"  · {pd['name']} ${pd['principal']:,.0f}{apy_str}{tav_str}")
+            apy_str = f" {pd['apy']:+.1f}%" if pd["apy"] is not None else ""
+            name = pd["name"].replace("Lighter Liquidity Provider (LLP)", "LLP").replace("Edge & Hedge (L/S Factors)", "Edge&Hedge")
+            lines.append(f"  {name} ${pd['principal']:,.0f}{apy_str}")
 
     return "\n".join(lines)
 
