@@ -16,6 +16,7 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 WALLET_ADDRESS = os.getenv("LIGHTER_WALLET", "0x0FBeABcaFCf817d47E10a7bCFC15ba194dbD4EEF")
+SEND_HOURS = [int(h.strip()) for h in os.getenv("SEND_HOURS", "8,12,16,20,0").split(",")]
 
 API_BASE = "https://mainnet.zklighter.elliot.ai/api/v1"
 HEADERS = {
@@ -24,7 +25,6 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 14) Chrome/131.0.0.0",
 }
 AEST = timezone(timedelta(hours=10))
-SEND_HOURS = [8, 12, 16, 20, 0]
 
 logging.basicConfig(
     level=logging.INFO,
