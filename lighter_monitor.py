@@ -61,6 +61,20 @@ async def fetch_account(client: httpx.AsyncClient) -> dict | None:
         return None
 
 
+async def fetch_lit_price(client: httpx.AsyncClient) -> float | None:
+    try:
+        r = await client.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={"ids": "lighter", "vs_currencies": "usd"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            return r.json().get("lighter", {}).get("usd")
+    except Exception:
+        pass
+    return None
+
+
 async def fetch_pool_meta(client: httpx.AsyncClient, pool_index: int) -> dict | None:
     try:
         r = await client.get(
@@ -145,7 +159,7 @@ def format_message(account: dict, positions: list[dict]) -> str:
     total_upnl = sum(p["upnl"] for p in positions)
     total_margin = sum(p["margin"] for p in positions)
 
-    lines = [f"📡 Lighter — {now} AEST"]
+    lines = [f"⚡ Lighter — {now} AEST"]
 
     if not positions:
         lines.append("")
@@ -160,13 +174,14 @@ def format_message(account: dict, positions: list[dict]) -> str:
             lines.append(f"{fmt_price(p['entry'])}→{fmt_price(p['current'])} | {p['size']}주 {fmt_price(p['value'])}")
             lines.append(f"{pnl_e} {p['upnl']:+,.1f} ({p['pnl_pct']:+.1f}%) ⚠️{fmt_price(p['liq'])}")
 
-    lines.append("")
+    lines.append("─────────────────")
     pnl_e = "🟢" if total_upnl >= 0 else "🔴"
     lines.append(f"{pnl_e} PnL ${total_upnl:+,.1f} | 마진 ${total_margin:,.0f}")
     lines.append(f"💰 가용 ${balance:,.0f} | 총 ${total_value:,.0f}")
 
     pool_details = account.get("_pool_details", [])
     if pool_details:
+        lines.append("─────────────────")
         total_equity = sum(p["equity"] for p in pool_details)
         total_lp_pnl = sum(p["lp_pnl"] for p in pool_details)
         lp_e = "🟢" if total_lp_pnl >= 0 else "🔴"
@@ -175,7 +190,8 @@ def format_message(account: dict, positions: list[dict]) -> str:
             apy_str = f" {pd['apy']:+.1f}%" if pd["apy"] is not None else ""
             pnl_str = f" ({pd['lp_pnl']:+,.0f})" if pd["lp_pnl"] != 0 else ""
             name = pd["name"].replace("Lighter Liquidity Provider (LLP)", "LLP").replace("Edge & Hedge (L/S Factors)", "Edge&Hedge")
-            lines.append(f"  {name} ${pd['equity']:,.0f}{pnl_str}{apy_str}")
+            lit_tag = pd.get("lit_tag", "")
+            lines.append(f"  {name} ${pd['equity']:,.0f}{pnl_str}{apy_str}{lit_tag}")
 
     return "\n".join(lines)
 
@@ -206,6 +222,8 @@ async def check_and_notify():
         if not account:
             return
 
+        lit_price = await fetch_lit_price(client)
+
         pool_details = []
         for s in account.get("shares", []):
             principal = float(s.get("principal_amount", "0"))
@@ -213,14 +231,23 @@ async def check_and_notify():
                 continue
             pool_idx = s.get("public_pool_index", 0)
             my_shares = int(s.get("shares_amount", 0))
+            entry_usdc = s.get("entry_usdc", "0")
             meta = await fetch_pool_meta(client, pool_idx)
             name = (meta.get("name") or "$LIT Staking") if meta else "$LIT Staking"
             apy = float(meta["annual_percentage_yield"]) if meta and meta.get("annual_percentage_yield") else None
             tav = float(meta["total_asset_value"]) if meta and meta.get("total_asset_value") else 0
             total_shares = int(meta.get("total_shares", 0)) if meta else 0
-            equity = (my_shares / total_shares) * tav if total_shares else principal
+
+            is_lit_staking = entry_usdc == "0" and not meta
+            if is_lit_staking and lit_price:
+                equity = principal * lit_price
+            elif total_shares:
+                equity = (my_shares / total_shares) * tav
+            else:
+                equity = principal
             lp_pnl = equity - principal if principal else 0
-            pool_details.append({"name": name, "principal": principal, "equity": equity, "lp_pnl": lp_pnl, "apy": apy})
+            lit_tag = f" @${lit_price:.2f}" if is_lit_staking and lit_price else ""
+            pool_details.append({"name": name, "principal": principal, "equity": equity, "lp_pnl": lp_pnl, "apy": apy, "lit_tag": lit_tag})
         account["_pool_details"] = sorted(pool_details, key=lambda x: x["principal"], reverse=True)
 
         positions = parse_positions(account)
