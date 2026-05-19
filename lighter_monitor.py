@@ -267,44 +267,6 @@ def seconds_until_next_send() -> int:
     return int((tomorrow_first - now).total_seconds())
 
 
-async def poll_commands():
-    """텔레그램 명령어 수신 루프 (getUpdates 롱폴링)"""
-    bot_base = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
-    async with httpx.AsyncClient() as client:
-        r = await client.post(f"{bot_base}/deleteWebhook", timeout=10)
-        log.info("deleteWebhook: %s", r.json().get("description", r.status_code))
-        offset = 0
-        while True:
-            try:
-                params = {"timeout": 30, "allowed_updates": '["message"]'}
-                if offset:
-                    params["offset"] = offset
-                r = await client.get(f"{bot_base}/getUpdates", params=params, timeout=40)
-                if r.status_code != 200:
-                    log.error("getUpdates 실패: %s", r.status_code)
-                    await asyncio.sleep(5)
-                    continue
-                updates = r.json().get("result", [])
-                for update in updates:
-                    offset = update["update_id"] + 1
-                    msg = update.get("message", {})
-                    chat_id = str(msg.get("chat", {}).get("id", ""))
-                    text = (msg.get("text") or "").strip()
-                    if chat_id != TELEGRAM_CHAT_ID:
-                        continue
-                    cmd = text.split()[0].split("@")[0].lower() if text else ""
-                    if cmd == "/status":
-                        log.info("📩 /status 명령 수신")
-                        await check_and_notify()
-                    elif cmd == "/help":
-                        await send_telegram("📋 *명령어*\n/status — 현재 포지션 즉시 조회\n/help — 명령어 목록")
-            except httpx.ReadTimeout:
-                continue
-            except Exception as e:
-                log.error("폴링 에러: %s", e)
-                await asyncio.sleep(5)
-
-
 async def main():
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         log.error("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 미설정 (.env 확인)")
@@ -315,19 +277,15 @@ async def main():
         WALLET_ADDRESS[:8], WALLET_ADDRESS[-4:],
     )
     log.info("발송 시각 (AEST): %s", ", ".join(f"{h:02d}:00" for h in sorted(SEND_HOURS)))
-    log.info("텔레그램 명령어 수신 활성화 (/status, /help)")
 
     await check_and_notify()
 
-    async def scheduled_loop():
-        while True:
-            wait = seconds_until_next_send()
-            next_time = datetime.now(AEST) + timedelta(seconds=wait)
-            log.info("다음 발송: %s (%.1f시간 후)", next_time.strftime("%H:%M AEST"), wait / 3600)
-            await asyncio.sleep(wait)
-            await check_and_notify()
-
-    await asyncio.gather(scheduled_loop(), poll_commands())
+    while True:
+        wait = seconds_until_next_send()
+        next_time = datetime.now(AEST) + timedelta(seconds=wait)
+        log.info("다음 발송: %s (%.1f시간 후)", next_time.strftime("%H:%M AEST"), wait / 3600)
+        await asyncio.sleep(wait)
+        await check_and_notify()
 
 
 if __name__ == "__main__":
