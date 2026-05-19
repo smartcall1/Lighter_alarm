@@ -269,15 +269,17 @@ def seconds_until_next_send() -> int:
 
 async def poll_commands():
     """텔레그램 명령어 수신 루프 (getUpdates 롱폴링)"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
-    offset = 0
+    bot_base = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
     async with httpx.AsyncClient() as client:
+        r = await client.post(f"{bot_base}/deleteWebhook", timeout=10)
+        log.info("deleteWebhook: %s", r.json().get("description", r.status_code))
+        offset = 0
         while True:
             try:
                 params = {"timeout": 30, "allowed_updates": '["message"]'}
                 if offset:
                     params["offset"] = offset
-                r = await client.get(url, params=params, timeout=40)
+                r = await client.get(f"{bot_base}/getUpdates", params=params, timeout=40)
                 if r.status_code != 200:
                     log.error("getUpdates 실패: %s", r.status_code)
                     await asyncio.sleep(5)
